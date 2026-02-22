@@ -158,7 +158,7 @@
             }
 
             // 1. Minify: 不要なタグの削除
-            ["title", "desc", "metadata", "style", "script"].forEach(tag => {
+            ["title", "desc", "metadata", "style", "script", "mask", "clipPath"].forEach(tag => {
                 svg.querySelectorAll(tag).forEach(el => el.remove());
             });
 
@@ -180,13 +180,11 @@
                     const attrsToRemove = [];
                     Array.from(node.attributes).forEach(attr => {
                         const name = attr.name;
-                        // xmlns:xxx, inkscape:xxx, sodipodi:xxx などの削除
-                        if (name.includes(':') && name !== 'xmlns:xlink') {
-                            attrsToRemove.push(name);
-                        }
-                        // id, class, xml:space, version などの描画に不要な属性
-                        const ignoreList = ['id', 'class', 'version', 'xml:space'];
-                        if (ignoreList.includes(name) || name.startsWith('data-')) {
+                        // 不要な属性のチェック
+                        const isNamespace = name.includes(':') && name !== 'xmlns:xlink';
+                        const isRedundant = ['id', 'class', 'version', 'xml:space', 'mask', 'clip-path', 'fill'].includes(name) || name.startsWith('data-');
+
+                        if (isNamespace || isRedundant) {
                             attrsToRemove.push(name);
                         }
                     });
@@ -202,16 +200,49 @@
             };
             cleanAttributes(svg);
 
-            // コメントノードの削除と空の g/defs の削除
+            // 不要なノード（コメント、空白、不可視要素、空要素）のクリーンアップ
             const cleanNodes = (node) => {
-                for (let i = node.childNodes.length - 1; i >= 0; i--) {
-                    const child = node.childNodes[i];
-                    if (child.nodeType === 8) { // 8 = COMMENT_NODE
+                const children = Array.from(node.childNodes);
+                for (let i = children.length - 1; i >= 0; i--) {
+                    const child = children[i];
+                    
+                    // コメントノードの削除
+                    if (child.nodeType === 8) {
                         node.removeChild(child);
-                    } else if (child.nodeType === 1) { // 1 = ELEMENT_NODE
+                        continue;
+                    }
+                    
+                    // 空白テキストノードの削除（defs や g の中身を判定しやすくするため）
+                    if (child.nodeType === 3 && !child.textContent.trim()) {
+                        node.removeChild(child);
+                        continue;
+                    }
+
+                    if (child.nodeType === 1) { // ELEMENT_NODE
                         cleanNodes(child);
-                        // 中身がなくなった defs や g を削除
-                        if ((child.tagName === 'defs' || child.tagName === 'g') && child.childNodes.length === 0) {
+                        const tagName = child.tagName.toLowerCase();
+                        
+                        // 1. 不透明度 0 の要素、または表示されない要素を削除 (Hit area など)
+                        const opacity = child.getAttribute('opacity');
+                        const fillOpacity = child.getAttribute('fill-opacity');
+                        const visibility = child.getAttribute('visibility');
+                        const display = child.getAttribute('display');
+                        
+                        // 不透明度が 0、または非表示に設定されている要素は削除
+                        if (opacity === '0' || fillOpacity === '0' || display === 'none' || visibility === 'hidden') {
+                            node.removeChild(child);
+                            continue;
+                        }
+
+                        // 2. 中身が空になった defs や g を削除
+                        if ((tagName === 'defs' || tagName === 'g') && child.childNodes.length === 0) {
+                            node.removeChild(child);
+                        } 
+                        // 3. 属性が空の g タグは中身を展開して削除 (アンラップ)
+                        else if (tagName === 'g' && child.attributes.length === 0) {
+                            while (child.firstChild) {
+                                node.insertBefore(child.firstChild, child);
+                            }
                             node.removeChild(child);
                         }
                     }
@@ -283,8 +314,8 @@
 
             minifiedSvg = minifiedSvg
                 .replace(/\r?\n|\r/g, '') // 改行削除
-                .replace(/\s{2,}/g, ' ')  // 連続スペース削除
                 .replace(/>\s+</g, '><')  // タグ間のスペース削除
+                .replace(/\s{2,}/g, ' ')  // 連続スペースを1つに統合
                 .replace(/"/g, "'")       // ダブルクォートをシングルクォートに
                 .replace(/#/g, "%23");    // シャープをURLエンコード
 
