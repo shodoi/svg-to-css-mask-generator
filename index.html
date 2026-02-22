@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG to CSS Mask Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* スクロールバーのカスタマイズなど */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        
+        .checkerboard {
+            background-color: #f8fafc;
+            background-image: 
+                linear-gradient(45deg, #e2e8f0 25%, transparent 25%, transparent 75%, #e2e8f0 75%, #e2e8f0),
+                linear-gradient(45deg, #e2e8f0 25%, transparent 25%, transparent 75%, #e2e8f0 75%, #e2e8f0);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        <header class="text-center pb-6 border-b border-gray-200">
+            <h1 class="text-3xl font-bold text-gray-900 flex items-center justify-center gap-3">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-600"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
+                SVG to CSS Mask Generator
+            </h1>
+            <p class="text-gray-500 mt-2">SVG画像をアップロードし、CSSの mask-image 用コードを生成・プレビューします</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- 左カラム：入力エリア -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-full">
+                <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <span class="bg-blue-100 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-sm">1</span>
+                    SVGをアップロード
+                </h2>
+
+                <!-- ドロップゾーン -->
+                <div id="dropzone" class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all duration-200 group mb-4">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-gray-400 group-hover:text-blue-500 mb-3 transition-colors"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
+                    <p class="text-gray-600 font-medium">クリックしてファイルを選択</p>
+                    <p class="text-gray-400 text-sm mt-1">または、ここにSVGをドラッグ＆ドロップ</p>
+                    <input type="file" id="fileInput" accept=".svg" class="hidden">
+                </div>
+
+                <!-- ファイル情報 -->
+                <div id="fileInfoArea" class="hidden mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200 flex items-center justify-between">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-500 flex-shrink-0"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                        <span id="fileNameDisplay" class="text-sm font-medium text-gray-700 truncate"></span>
+                    </div>
+                </div>
+
+                <button id="generateBtn" disabled class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm mb-8">
+                    CSS変数を生成する
+                </button>
+
+                <div class="mt-auto">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2">アップロードされたオリジナルSVG</h3>
+                    <div class="checkerboard rounded-xl border border-gray-200 h-40 flex items-center justify-center overflow-hidden p-4 relative group">
+                        <div id="originalPreview" class="max-w-full max-h-full flex items-center justify-center">
+                            <span class="text-gray-400 text-sm">未選択</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右カラム：出力・プレビューエリア -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-full">
+                <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <span class="bg-blue-100 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-sm">2</span>
+                    出力結果 & プレビュー
+                </h2>
+
+                <div class="space-y-5 flex-grow">
+                    <!-- CSS変数出力 -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <label for="cssVarOutput" class="text-sm font-semibold text-gray-700">CSS変数 (mask-image用)</label>
+                            <button onclick="copyText('cssVarOutput', this)" class="text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 px-3 rounded-md transition-colors flex items-center gap-1">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                                コピー
+                            </button>
+                        </div>
+                        <textarea id="cssVarOutput" class="w-full h-40 p-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y" placeholder="--icon: url(...);"></textarea>
+                    </div>
+
+                    <!-- CSSプロパティ出力 -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <label for="cssUsageOutput" class="text-sm font-semibold text-gray-700">CSSプロパティ</label>
+                            <button onclick="copyText('cssUsageOutput', this)" class="text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 px-3 rounded-md transition-colors flex items-center gap-1">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                                コピー
+                            </button>
+                        </div>
+                        <textarea id="cssUsageOutput" readonly class="w-full h-40 p-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y" placeholder="display: inline-block;&#10;mask-image: var(--icon);&#10;..."></textarea>
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-sm font-semibold text-gray-700">マスクプレビュー</h3>
+                        <div class="flex items-center gap-2">
+                            <label for="colorPicker" class="text-xs text-gray-500 cursor-pointer">背景色変更:</label>
+                            <input type="color" id="colorPicker" value="#000000" class="w-6 h-6 rounded cursor-pointer border-0 p-0" title="プレビューの色を変更">
+                        </div>
+                    </div>
+                    <div class="checkerboard rounded-xl border border-gray-200 h-40 flex items-center justify-center p-4">
+                        <div id="maskPreview" class="transition-colors duration-200"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- トースト通知 (alertの代わり) -->
+    <div id="toast" class="fixed bottom-4 right-4 px-6 py-3 rounded-xl text-white shadow-xl transition-all duration-300 z-50 transform translate-y-10 opacity-0 pointer-events-none flex items-center gap-2 font-medium">
+        <span id="toastIcon"></span>
+        <span id="toastMsg"></span>
+    </div>
+
+    <script src="script.js" defer></script>
+</body>
+</html>
