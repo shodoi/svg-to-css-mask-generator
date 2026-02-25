@@ -10,6 +10,7 @@
     const maskPreview = document.getElementById('maskPreview');
     const cssVarOutput = document.getElementById('cssVarOutput');
     const cssUsageOutput = document.getElementById('cssUsageOutput');
+    const originalSvgCodeOutput = document.getElementById('originalSvgCodeOutput');
     const fileInfoArea = document.getElementById('fileInfoArea');
     const fileNameDisplay = document.getElementById('fileNameDisplay');
     const colorPicker = document.getElementById('colorPicker');
@@ -222,11 +223,13 @@
             // SVGをサニタイズしてから表示
             const sanitizedSvg = sanitizeSvg(e.target.result);
             if (!sanitizedSvg) {
+                originalSvgCodeOutput.value = '';
                 showToast('無効なSVGファイルです', 'error');
                 return;
             }
 
             currentSvgContent = sanitizedSvg;
+            originalSvgCodeOutput.value = currentSvgContent;
             originalPreview.innerHTML = currentSvgContent;
 
             const svgEl = originalPreview.querySelector('svg');
@@ -259,6 +262,7 @@
         };
 
         reader.onerror = () => {
+            originalSvgCodeOutput.value = '';
             showToast('ファイルの読み込みに失敗しました', 'error');
             generateBtn.disabled = true;
         };
