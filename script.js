@@ -231,7 +231,7 @@
 
             const svgEl = originalPreview.querySelector('svg');
             if (svgEl) {
-                // インラインstyle属性をクリアして、JSで制御 (ico_svg.svgなどにあるstyle属性の干渉を防ぐ)
+                // インラインstyle属性をクリアして、JSで制御
                 svgEl.removeAttribute('style');
 
                 const hasWidth = svgEl.hasAttribute('width');
@@ -253,9 +253,6 @@
             }
 
             generateBtn.disabled = false;
-
-            // 自動生成（オプション）
-            // generateCSS(); 
         };
 
         reader.onerror = () => {
@@ -323,7 +320,7 @@
                 }
             } catch (e) {
                 console.error("SVGO optimization failed:", e);
-                // 失敗した場合は元のマニュアルクリーニングにフォールバック、またはそのまま進める
+                // 失敗した場合は元のSVGをそのまま使用
             }
         }
 
@@ -370,21 +367,13 @@
         const cssWidth = formatSize(w);
         const cssHeight = formatSize(h);
         // 3. 文字列化とエスケープ
-        // SVGOを通した SVG をシリアライズする
         const serializer = new XMLSerializer();
         let minifiedSvg = serializer.serializeToString(svg);
 
-        // serializeToStringで空のstyle属性が付く場合があるため、それも取り除く
-        // またXMLNSの補完などで混ざる可能性もあるので最終クリーンアップ
+        // Data URI用のエスケープ処理
         minifiedSvg = minifiedSvg
-            .replace(/\s*xmlns:xlink="[^"]*"/g, "") // xmlns:xlink を削除
-            .replace(/\s*xml:space="[^"]*"/g, "")   // xml:space を削除
-            .replace(/\s*style=""/g, "")
-            .replace(/\s*fill=""/g, "")
             .replace(/"/g, "'")       // ダブルクォートをシングルクォートに
-            .replace(/#/g, "%23")    // シャープをURLエンコード
-            .replace(/[\r\n]/g, "")   // 改行を削除
-            .replace(/\s{2,}/g, " "); // 連続スペースを1つに縮める
+            .replace(/#/g, "%23");    // シャープをURLエンコード
 
         // 4. CSS変数の構築
         const safeVarName = currentFileName.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
@@ -425,7 +414,6 @@ background-color: ${currentColor};`;
         // プレビュー用に大きすぎる場合はコンテナに収める処理
         maskPreview.style.maxWidth = '100%';
         maskPreview.style.maxHeight = '100%';
-        maskPreview.style.transform = 'none'; // 古いスケール処理をリセット
     }
 
     // カラーピッカーの変更イベント
