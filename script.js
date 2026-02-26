@@ -5,13 +5,12 @@
     // DOM要素の取得
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('fileInput');
+    const svgSourceInput = document.getElementById('svgSourceInput');
     const generateBtn = document.getElementById('generateBtn');
     const originalPreview = document.getElementById('originalPreview');
     const maskPreview = document.getElementById('maskPreview');
     const cssVarOutput = document.getElementById('cssVarOutput');
     const cssUsageOutput = document.getElementById('cssUsageOutput');
-    const originalSvgCodeOutput = document.getElementById('originalSvgCodeOutput');
-    const fileInfoArea = document.getElementById('fileInfoArea');
     const fileNameDisplay = document.getElementById('fileNameDisplay');
     const colorPicker = document.getElementById('colorPicker');
 
@@ -30,11 +29,11 @@
         toastMsg.textContent = message;
 
         if (type === 'success') {
-            toast.className = 'fixed bottom-6 right-6 px-6 py-3 rounded-xl text-white shadow-xl transition-all duration-300 z-50 transform translate-y-0 opacity-100 bg-gray-800 flex items-center gap-2 font-medium';
-            toastIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-400"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
+            toast.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg text-white shadow-xl transition-all duration-300 z-50 transform translate-y-0 opacity-100 bg-gray-800 flex items-center gap-2 text-sm font-medium';
+            toastIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-400"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
         } else {
-            toast.className = 'fixed bottom-6 right-6 px-6 py-3 rounded-xl text-white shadow-xl transition-all duration-300 z-50 transform translate-y-0 opacity-100 bg-red-600 flex items-center gap-2 font-medium';
-            toastIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+            toast.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg text-white shadow-xl transition-all duration-300 z-50 transform translate-y-0 opacity-100 bg-red-600 flex items-center gap-2 text-sm font-medium';
+            toastIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
         }
 
         setTimeout(() => {
@@ -144,7 +143,7 @@
 
             // ボタンの見た目変更
             const originalHtml = btnElement.innerHTML;
-            btnElement.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg> コピー完了';
+            btnElement.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg> 完了';
             btnElement.classList.add('bg-green-100', 'text-green-700');
             btnElement.classList.remove('bg-gray-100', 'text-gray-700', 'hover:bg-gray-200');
 
@@ -215,7 +214,6 @@
 
         // UIの更新
         fileNameDisplay.textContent = file.name;
-        fileInfoArea.classList.remove('hidden');
 
         const reader = new FileReader();
 
@@ -223,49 +221,62 @@
             // SVGをサニタイズしてから表示
             const sanitizedSvg = sanitizeSvg(e.target.result);
             if (!sanitizedSvg) {
-                originalSvgCodeOutput.value = '';
                 showToast('無効なSVGファイルです', 'error');
                 return;
             }
 
             currentSvgContent = sanitizedSvg;
-            originalSvgCodeOutput.value = currentSvgContent;
-            originalPreview.innerHTML = currentSvgContent;
 
-            const svgEl = originalPreview.querySelector('svg');
-            if (svgEl) {
-                // インラインstyle属性をクリアして、JSで制御
-                svgEl.removeAttribute('style');
+            // ペーストエリアにも表示
+            svgSourceInput.value = currentSvgContent;
 
-                const hasWidth = svgEl.hasAttribute('width');
-                const hasHeight = svgEl.hasAttribute('height');
-
-                if (hasWidth && hasHeight) {
-                    // width, height が存在する場合はそのサイズ（等倍）で表示。
-                    // ただしプレビュー枠（100%）を超えないようにする。
-                    svgEl.style.maxWidth = '100%';
-                    svgEl.style.maxHeight = '100%';
-                } else {
-                    // width, height が存在しない場合はコンテナのサイズに合わせる。
-                    svgEl.style.width = '100%';
-                    svgEl.style.height = '100%';
-                    svgEl.style.maxWidth = '100%';
-                    svgEl.style.maxHeight = '100%';
-                    svgEl.style.objectFit = 'contain';
-                }
-            }
+            // プレビューを更新
+            updateOriginalPreview(currentSvgContent);
 
             generateBtn.disabled = false;
         };
 
         reader.onerror = () => {
-            originalSvgCodeOutput.value = '';
             showToast('ファイルの読み込みに失敗しました', 'error');
             generateBtn.disabled = true;
         };
 
         reader.readAsText(file);
     }
+
+    // SVGソースペーストエリアの入力処理
+    svgSourceInput.addEventListener('input', (e) => {
+        const inputText = e.target.value.trim();
+
+        if (!inputText) {
+            currentSvgContent = '';
+            fileNameDisplay.textContent = '';
+            originalPreview.innerHTML = '<span class="text-gray-400 text-xs">未選択</span>';
+            generateBtn.disabled = true;
+            return;
+        }
+
+        // サニタイズ処理
+        const sanitizedSvg = sanitizeSvg(inputText);
+        if (!sanitizedSvg) {
+            svgSourceInput.classList.add('border-red-500');
+            showToast('無効なSVGです', 'error');
+            return;
+        }
+
+        // バリデーション成功
+        svgSourceInput.classList.remove('border-red-500');
+
+        // グローバル変数を更新
+        currentSvgContent = sanitizedSvg;
+        currentFileName = 'pasted-svg';
+        fileNameDisplay.textContent = 'ペーストしたSVG';
+
+        // プレビューを更新
+        updateOriginalPreview(sanitizedSvg);
+
+        generateBtn.disabled = false;
+    });
 
     // Minify & CSS生成処理
     generateBtn.addEventListener('click', generateCSS);
@@ -288,13 +299,11 @@
                 // SVGO設定: 不要な属性・要素を削除
                 const result = SVGO.optimize(currentSvgContent, {
                     plugins: [
-                        // 不要な属性を削除（fill, stroke, data-* 等）
+                        // 不要な属性を削除（fill, strokeはCSS マスクで重要なため保持）
                         {
                             name: 'removeAttrs',
                             params: {
                                 attrs: [
-                                    'fill',
-                                    'stroke',
                                     'style',
                                     'class',
                                     'id',
@@ -407,6 +416,33 @@ background-color: ${currentColor};`;
         showToast('CSSの生成が完了しました');
     }
 
+    // オリジナルSVGプレビューの更新
+    function updateOriginalPreview(svgContent) {
+        if (!svgContent) return;
+
+        originalPreview.innerHTML = svgContent;
+
+        const svgEl = originalPreview.querySelector('svg');
+        if (svgEl) {
+            // インラインstyle属性をクリアして、JSで制御
+            svgEl.removeAttribute('style');
+
+            const hasWidth = svgEl.hasAttribute('width');
+            const hasHeight = svgEl.hasAttribute('height');
+
+            if (hasWidth && hasHeight) {
+                svgEl.style.maxWidth = '100%';
+                svgEl.style.maxHeight = '100%';
+            } else {
+                svgEl.style.width = '100%';
+                svgEl.style.height = '100%';
+                svgEl.style.maxWidth = '100%';
+                svgEl.style.maxHeight = '100%';
+                svgEl.style.objectFit = 'contain';
+            }
+        }
+    }
+
     // マスクプレビューの更新
     function updateMaskPreview(width = null, height = null) {
         if (!currentCssVarName) return;
@@ -453,5 +489,11 @@ background-color: ${currentColor};`;
 
             updateMaskPreview();
         }
+    });
+
+    // CSSプロパティの手動編集イベント（リアルタイムプレビュー更新）
+    cssUsageOutput.addEventListener('input', () => {
+        if (!currentCssVarName || !currentCssVarValue) return;
+        updateMaskPreview();
     });
 })(); // IIFE終了
