@@ -134,26 +134,50 @@
 
         if (!svg) return null;
 
-        // 危険な要素を削除
-        const dangerousTags = ['script', 'foreignObject', 'iframe', 'embed', 'object', 'meta', 'link'];
+        // 危険な要素を削除（拡張版）
+        // - script系: script, foreignObject, iframe, embed, object, meta, link
+        // - 外部リソース参照: use, image, feImage
+        // - アニメーション（イベントトリガー可能）: animate, animateTransform, animateMotion, set
+        const dangerousTags = [
+            'script', 'foreignObject', 'iframe', 'embed', 'object', 'meta', 'link',
+            'use', 'image', 'feImage',
+            'animate', 'animateTransform', 'animateMotion', 'set'
+        ];
         dangerousTags.forEach(tag => {
             svg.querySelectorAll(tag).forEach(el => el.remove());
         });
 
-        // 危険な属性を削除
-        const dangerousAttrs = ['onload', 'onclick', 'onerror', 'onmouseover', 'onfocus', 'onblur', 'href'];
+        // 危険な属性を削除（全on*イベントハンドラに対応）
         const cleanAttrs = (node) => {
             if (node.nodeType === 1) {
-                dangerousAttrs.forEach(attr => {
-                    if (node.hasAttribute(attr)) {
-                        // xlink:hrefは保持、javascript:始まりのhrefは削除
-                        const val = node.getAttribute(attr);
-                        if (attr === 'href' && val && !val.startsWith('javascript:')) {
-                            return;
+                // 全属性を配列にコピー（削除中に配列が変わるのを防ぐ）
+                const attrs = Array.from(node.attributes || []);
+                attrs.forEach(attr => {
+                    const attrName = attr.name.toLowerCase();
+                    const attrValue = attr.value || '';
+
+                    // 1. 全てのon*イベントハンドラを削除
+                    if (attrName.startsWith('on')) {
+                        node.removeAttribute(attr.name);
+                        return;
+                    }
+
+                    // 2. javascript: URLを削除
+                    if ((attrName === 'href' || attrName === 'xlink:href') &&
+                        attrValue.toLowerCase().trim().startsWith('javascript:')) {
+                        node.removeAttribute(attr.name);
+                        return;
+                    }
+
+                    // 3. data: URL（base64等）の削除（画像以外）
+                    if (attrName === 'href' || attrName === 'xlink:href') {
+                        if (attrValue.toLowerCase().trim().startsWith('data:')) {
+                            node.removeAttribute(attr.name);
                         }
-                        node.removeAttribute(attr);
                     }
                 });
+
+                // 子要素も再帰的に処理
                 node.childNodes.forEach(child => cleanAttrs(child));
             }
         };
@@ -604,7 +628,7 @@ inline-size: ${cssWidth};`;
     // カラーピッカーの変更イベント
     colorPicker.addEventListener('input', (e) => {
         const outputMode = document.querySelector('input[name="outputMode"]:checked').value;
-        
+
         // background-imageモードの場合は何もしない
         if (outputMode === 'background') return;
 
