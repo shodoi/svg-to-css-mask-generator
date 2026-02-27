@@ -13,12 +13,15 @@
     const cssUsageOutput = document.getElementById('cssUsageOutput');
     const fileNameDisplay = document.getElementById('fileNameDisplay');
     const colorPicker = document.getElementById('colorPicker');
+    const multiColorWarning = document.getElementById('multiColorWarning');
+    const outputModeRadios = document.querySelectorAll('input[name="outputMode"]');
 
     let currentFile = null;
     let currentSvgContent = '';
     let currentFileName = '';
     let currentCssVarName = '';
     let currentCssVarValue = '';
+    let isMultiColorSvg = false;
 
     // トースト通知関数
     function showToast(message, type = 'success') {
@@ -40,6 +43,76 @@
             toast.classList.replace('translate-y-0', 'translate-y-10');
             toast.classList.replace('opacity-100', 'opacity-0');
         }, 3000);
+    }
+
+    // 色値を正規化
+    function normalizeColor(color) {
+        if (!color) return '';
+        color = color.toLowerCase().trim();
+        // #fff -> #ffffff 形式に統一
+        if (/^#[0-9a-f]{3}$/i.test(color)) {
+            color = '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
+        }
+        return color;
+    }
+
+    // 複数色SVG検出関数
+    function detectMultiColorSvg(svgContent) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svgContent, 'image/svg+xml');
+        const svg = doc.querySelector('svg');
+        if (!svg) return false;
+
+        const colors = new Set();
+
+        // fill属性とstroke属性を収集
+        const elements = svg.querySelectorAll('[fill], [stroke]');
+        elements.forEach(el => {
+            const fill = el.getAttribute('fill');
+            const stroke = el.getAttribute('stroke');
+            if (fill && fill !== 'none') {
+                colors.add(normalizeColor(fill));
+            }
+            if (stroke && stroke !== 'none') {
+                colors.add(normalizeColor(stroke));
+            }
+        });
+
+        // style属性内の色も検査
+        svg.querySelectorAll('[style]').forEach(el => {
+            const style = el.getAttribute('style') || '';
+            const fillMatch = style.match(/fill\s*:\s*([^;]+)/);
+            const strokeMatch = style.match(/stroke\s*:\s*([^;]+)/);
+            if (fillMatch) {
+                const color = fillMatch[1].trim();
+                if (color && color !== 'none') {
+                    colors.add(normalizeColor(color));
+                }
+            }
+            if (strokeMatch) {
+                const color = strokeMatch[1].trim();
+                if (color && color !== 'none') {
+                    colors.add(normalizeColor(color));
+                }
+            }
+        });
+
+        // 単色（黒系・currentColor）のみの場合は除外
+        const singleColors = ['black', '#000', '#000000', 'currentcolor', 'currentColor'];
+        const filteredColors = [...colors].filter(c => !singleColors.includes(c));
+
+        return filteredColors.length > 1;
+    }
+
+    // 複数色警告の更新
+    function updateMultiColorWarning(svgContent) {
+        isMultiColorSvg = detectMultiColorSvg(svgContent);
+
+        if (isMultiColorSvg) {
+            multiColorWarning.classList.remove('hidden');
+        } else {
+            multiColorWarning.classList.add('hidden');
+        }
     }
 
     // SVGサニタイズ関数（セキュリティ対策）
@@ -233,6 +306,9 @@
             // プレビューを更新
             updateOriginalPreview(currentSvgContent);
 
+            // 複数色SVG警告を更新
+            updateMultiColorWarning(currentSvgContent);
+
             generateBtn.disabled = false;
         };
 
@@ -275,6 +351,9 @@
         // プレビューを更新
         updateOriginalPreview(sanitizedSvg);
 
+        // 複数色SVG警告を更新
+        updateMultiColorWarning(sanitizedSvg);
+
         generateBtn.disabled = false;
     });
 
@@ -296,30 +375,46 @@
         // 1. Minify SVG via SVGO
         if (typeof SVGO !== 'undefined') {
             try {
-                // SVGO設定: 不要な属性・要素を削除
+                // SVGO設定: 最小限の最適化のみ（形状変換・viewBox削除を防ぐ）
                 const result = SVGO.optimize(currentSvgContent, {
                     plugins: [
-                        // 不要な属性を削除（fill, strokeはCSS マスクで重要なため保持）
+                        // プリセットデフォルトをベースに、問題のあるプラグインを無効化
+                        {
+                            name: 'preset-default',
+                            params: {
+                                overrides: {
+                                    // viewBoxを削除しない（重要）
+                                    removeViewBox: false,
+                                    // 形状をpathに変換しない（座標ずれを防ぐ）
+                                    convertShapeToPath: false,
+                                    // パスデータを変換しない
+                                    convertPathData: false,
+                                    // IDを削除しない（参照がある可能性）
+                                    cleanupIDs: false
+                                }
+                            }
+                        },
+                        // 不要な属性を削除
                         {
                             name: 'removeAttrs',
                             params: {
                                 attrs: [
-                                    'style',
                                     'class',
-                                    'id',
                                     'version',
-                                    'x',
-                                    'y',
                                     'xml:space',
-                                    'data-name',
-                                    'data-*'
+                                    'data-name'
                                 ]
                             }
                         },
-                        // 不要な要素を削除
-                        'removeStyleElement',
-                        // preset-default（removeViewBoxは含まれないのでviewBoxは保持される）
-                        'preset-default',
+                        // コメントを削除
+                        'removeComments',
+                        // エディタデータを削除
+                        'removeEditorsNSData',
+                        // メタデータを削除
+                        'removeMetadata',
+                        // タイトルと説明を削除
+                        'removeTitle',
+                        'removeDesc'
                     ]
                 });
 
@@ -395,9 +490,14 @@
 
         const finalCssVar = `${currentCssVarName}: ${currentCssVarValue};`;
 
-        // 5. CSSプロパティの構築
+        // 5. 出力モードの取得とCSSプロパティの構築
+        const outputMode = document.querySelector('input[name="outputMode"]:checked').value;
         const currentColor = colorPicker.value;
-        const finalCssUsage = `display: inline-block;
+
+        let finalCssUsage;
+        if (outputMode === 'mask') {
+            // mask-image モード（単色アイコン）
+            finalCssUsage = `display: inline-block;
 mask-image: var(${currentCssVarName});
 mask-size: contain;
 mask-position: center;
@@ -405,13 +505,23 @@ mask-repeat: no-repeat;
 block-size: ${cssHeight};
 inline-size: ${cssWidth};
 background-color: ${currentColor};`;
+        } else {
+            // background-image モード（カラーアイコン）
+            finalCssUsage = `display: inline-block;
+background-image: var(${currentCssVarName});
+background-size: contain;
+background-position: center;
+background-repeat: no-repeat;
+block-size: ${cssHeight};
+inline-size: ${cssWidth};`;
+        }
 
         // 出力
         cssVarOutput.value = finalCssVar;
         cssUsageOutput.value = finalCssUsage;
 
-        // 6. マスクプレビューの反映
-        updateMaskPreview(cssWidth, cssHeight);
+        // 6. プレビューの反映
+        updatePreview(cssWidth, cssHeight, outputMode);
 
         showToast('CSSの生成が完了しました');
     }
@@ -443,8 +553,8 @@ background-color: ${currentColor};`;
         }
     }
 
-    // マスクプレビューの更新
-    function updateMaskPreview(width = null, height = null) {
+    // プレビューの更新（mask-image / background-image 共用）
+    function updatePreview(width = null, height = null, outputMode = 'mask') {
         if (!currentCssVarName) return;
 
         maskPreview.style.cssText = cssUsageOutput.value;
@@ -454,10 +564,50 @@ background-color: ${currentColor};`;
         // プレビュー用に大きすぎる場合はコンテナに収める処理
         maskPreview.style.maxWidth = '100%';
         maskPreview.style.maxHeight = '100%';
+
+        // background-imageモードの場合はカラーピッカーを無効化
+        const colorPickerContainer = colorPicker.closest('div');
+        if (outputMode === 'background') {
+            colorPicker.disabled = true;
+            colorPicker.style.opacity = '0.5';
+            colorPicker.style.cursor = 'not-allowed';
+            if (colorPickerContainer) {
+                colorPickerContainer.style.opacity = '0.5';
+                colorPickerContainer.style.pointerEvents = 'none';
+            }
+        } else {
+            colorPicker.disabled = false;
+            colorPicker.style.opacity = '1';
+            colorPicker.style.cursor = 'pointer';
+            if (colorPickerContainer) {
+                colorPickerContainer.style.opacity = '1';
+                colorPickerContainer.style.pointerEvents = 'auto';
+            }
+        }
     }
+
+    // 後方互換性のためのエイリアス
+    function updateMaskPreview(width = null, height = null) {
+        updatePreview(width, height, 'mask');
+    }
+
+    // 出力モード切り替えイベント
+    outputModeRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            // CSSが生成済みの場合は再生成
+            if (currentSvgContent && currentCssVarName) {
+                generateCSS();
+            }
+        });
+    });
 
     // カラーピッカーの変更イベント
     colorPicker.addEventListener('input', (e) => {
+        const outputMode = document.querySelector('input[name="outputMode"]:checked').value;
+        
+        // background-imageモードの場合は何もしない
+        if (outputMode === 'background') return;
+
         if (cssUsageOutput.value) {
             // テキストエリア内の background-color を置換
             cssUsageOutput.value = cssUsageOutput.value.replace(/background-color:\s*#[0-9a-fA-F]+;/, `background-color: ${e.target.value};`);

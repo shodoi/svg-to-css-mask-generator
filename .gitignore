@@ -1,6 +1,7 @@
 GEMINI.md
 README.md
 docs/*
+plans/*
 node_modules/*
 /.roo/*
 ico_*

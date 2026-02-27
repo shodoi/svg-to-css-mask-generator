@@ -106,6 +106,39 @@
                 </div>
             </div>
 
+            <!-- 複数色SVG警告 -->
+            <div id="multiColorWarning"
+                class="hidden mb-3 p-3 bg-amber-50 border border-amber-300 rounded-lg" role="alert">
+                <div class="flex items-start gap-2">
+                    <svg class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <div class="text-xs text-amber-800">
+                        <p class="font-semibold">複数色が使用されています</p>
+                        <p class="mt-1">マスクとして使用すると指定した単色のベタ塗りになります。元の色を維持する場合は「カラーアイコン（background-image）」モードを選択してください。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 出力モード切り替え -->
+            <div id="outputModeSection" class="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <label class="text-xs font-semibold text-gray-700 mb-2 block">出力モード:</label>
+                <div class="flex flex-wrap gap-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="outputMode" value="mask" checked
+                            class="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300">
+                        <span class="text-xs text-gray-700">単色アイコン（mask-image）</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="outputMode" value="background"
+                            class="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300">
+                        <span class="text-xs text-gray-700">カラーアイコン（background-image）</span>
+                    </label>
+                </div>
+            </div>
+
             <!-- 生成ボタン -->
             <button id="generateBtn" disabled
                 class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
