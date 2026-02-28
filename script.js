@@ -15,6 +15,8 @@
     const colorPicker = document.getElementById('colorPicker');
     const multiColorWarning = document.getElementById('multiColorWarning');
     const outputModeRadios = document.querySelectorAll('input[name="outputMode"]');
+    const outputModeMask = document.getElementById('outputModeMask');
+    const maskModeLabel = document.getElementById('maskModeLabel');
 
     let currentFile = null;
     let currentSvgContent = '';
@@ -22,6 +24,27 @@
     let currentCssVarName = '';
     let currentCssVarValue = '';
     let isMultiColorSvg = false;
+
+    // SVGO遅延読み込み（キャッシュ付き）
+    let svgoOptimize = null;
+
+    async function loadSvgo() {
+        if (svgoOptimize) return svgoOptimize;
+        try {
+            const { optimize } = await import('https://cdn.jsdelivr.net/npm/svgo@4.0.0/dist/svgo.browser.js');
+            svgoOptimize = optimize;
+            return optimize;
+        } catch (e) {
+            console.warn('SVGO の読み込みに失敗しました:', e);
+            return null;
+        }
+    }
+
+    // SVGOを事前に読み込み開始（ノンブロッキング）
+    loadSvgo();
+
+    // ファイルサイズ上限（1MB）
+    const MAX_FILE_SIZE = 1024 * 1024;
 
     // トースト通知関数
     function showToast(message, type = 'success') {
@@ -97,6 +120,23 @@
             }
         });
 
+        // <style>要素内のCSSルールからも色を検査
+        svg.querySelectorAll('style').forEach(styleEl => {
+            const cssText = styleEl.textContent || '';
+            for (const m of cssText.matchAll(/fill\s*:\s*([^;}\s]+)/gi)) {
+                const color = m[1].trim();
+                if (color && color !== 'none') {
+                    colors.add(normalizeColor(color));
+                }
+            }
+            for (const m of cssText.matchAll(/stroke\s*:\s*([^;}\s]+)/gi)) {
+                const color = m[1].trim();
+                if (color && color !== 'none') {
+                    colors.add(normalizeColor(color));
+                }
+            }
+        });
+
         // 単色（黒系・currentColor）のみの場合は除外
         const singleColors = ['black', '#000', '#000000', 'currentcolor', 'currentColor'];
         const filteredColors = [...colors].filter(c => !singleColors.includes(c));
@@ -108,10 +148,22 @@
     function updateMultiColorWarning(svgContent) {
         isMultiColorSvg = detectMultiColorSvg(svgContent);
 
+        const backgroundRadio = document.getElementById('outputModeBackground');
+
         if (isMultiColorSvg) {
             multiColorWarning.classList.remove('hidden');
+            // 複数色SVGの場合: カラーアイコンモードをデフォルト選択（単色アイコンも選択可能）
+            if (backgroundRadio) {
+                backgroundRadio.checked = true;
+                outputModeMask.checked = false;
+            }
         } else {
             multiColorWarning.classList.add('hidden');
+            // 単色SVGの場合: 単色アイコンモードをデフォルト選択
+            outputModeMask.checked = true;
+            if (backgroundRadio) {
+                backgroundRadio.checked = false;
+            }
         }
     }
 
@@ -147,6 +199,18 @@
             svg.querySelectorAll(tag).forEach(el => el.remove());
         });
 
+        // <style>要素の内容をサニタイズ（外部リソース読み込みを防ぎつつ、内部スタイルは維持）
+        svg.querySelectorAll('style').forEach(styleEl => {
+            let css = styleEl.textContent || '';
+            // @import による外部CSS読み込みを除去
+            css = css.replace(/@import\s+[^;]+;?/gi, '');
+            // @font-face による外部フォント読み込みを除去
+            css = css.replace(/@font-face\s*\{[^}]*\}/gi, '');
+            // url() による外部リソース参照を除去
+            css = css.replace(/url\s*\([^)]*\)/gi, '');
+            styleEl.textContent = css;
+        });
+
         // 危険な属性を削除（全on*イベントハンドラに対応）
         const cleanAttrs = (node) => {
             if (node.nodeType === 1) {
@@ -173,6 +237,15 @@
                     if (attrName === 'href' || attrName === 'xlink:href') {
                         if (attrValue.toLowerCase().trim().startsWith('data:')) {
                             node.removeAttribute(attr.name);
+                            return;
+                        }
+                    }
+
+                    // 4. style属性内のurl()を削除（外部リソース読み込み防止）
+                    if (attrName === 'style') {
+                        const cleanedStyle = attrValue.replace(/url\s*\([^)]*\)/gi, '');
+                        if (cleanedStyle !== attrValue) {
+                            node.setAttribute(attr.name, cleanedStyle);
                         }
                     }
                 });
@@ -182,6 +255,12 @@
             }
         };
         cleanAttrs(svg);
+
+        // <a>タグのhref属性を削除（フィッシング防止）
+        svg.querySelectorAll('a').forEach(el => {
+            el.removeAttribute('href');
+            el.removeAttribute('xlink:href');
+        });
 
         // viewBoxがない場合、width/heightから自動生成
         if (!svg.getAttribute('viewBox')) {
@@ -219,7 +298,7 @@
     }
 
     // コピー関数（モダンAPI優先、フォールバック付き）
-    window.copyText = async function (elementId, btnElement) {
+    async function copyText(elementId, btnElement) {
         const textarea = document.getElementById(elementId);
         if (!textarea.value) {
             showToast('コピーする内容がありません', 'error');
@@ -231,7 +310,7 @@
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(textarea.value);
             } else {
-                // フォールバック: execCommand
+                // フォールバック: execCommand（非推奨だが互換性のため維持）
                 textarea.select();
                 textarea.setSelectionRange(0, 99999);
                 document.execCommand('copy');
@@ -255,7 +334,7 @@
             console.error('コピーに失敗しました', err);
             showToast('コピーに失敗しました', 'error');
         }
-    };
+    }
 
     // ドラッグ＆ドロップとクリックイベント
     dropzone.addEventListener('click', () => fileInput.click());
@@ -306,6 +385,11 @@
             return;
         }
 
+        if (file.size > MAX_FILE_SIZE) {
+            showToast('ファイルサイズが大きすぎます（上限: 1MB）', 'error');
+            return;
+        }
+
         currentFile = file;
         currentFileName = file.name.replace(/\.svg$/i, '');
 
@@ -344,6 +428,15 @@
         reader.readAsText(file);
     }
 
+    // プレビュー領域のプレースホルダーを設定
+    function setPreviewPlaceholder() {
+        originalPreview.textContent = '';
+        const placeholder = document.createElement('span');
+        placeholder.className = 'text-gray-400 text-xs';
+        placeholder.textContent = '未選択';
+        originalPreview.appendChild(placeholder);
+    }
+
     // SVGソースペーストエリアの入力処理
     svgSourceInput.addEventListener('input', (e) => {
         const inputText = e.target.value.trim();
@@ -351,7 +444,7 @@
         if (!inputText) {
             currentSvgContent = '';
             fileNameDisplay.textContent = '';
-            originalPreview.innerHTML = '<span class="text-gray-400 text-xs">未選択</span>';
+            setPreviewPlaceholder();
             generateBtn.disabled = true;
             return;
         }
@@ -384,7 +477,7 @@
     // Minify & CSS生成処理
     generateBtn.addEventListener('click', generateCSS);
 
-    function generateCSS() {
+    async function generateCSS() {
         if (!currentSvgContent) return;
 
         const parser = new DOMParser();
@@ -396,51 +489,62 @@
             return;
         }
 
-        // 1. Minify SVG via SVGO
-        if (typeof SVGO !== 'undefined') {
+        // 1. Minify SVG via SVGO（動的インポート）
+        const optimize = await loadSvgo();
+
+        // 出力モードの取得（SVGO設定に影響）
+        const outputMode = document.querySelector('input[name="outputMode"]:checked').value;
+
+        if (optimize) {
             try {
-                // SVGO設定: 最小限の最適化のみ（形状変換・viewBox削除を防ぐ）
-                const result = SVGO.optimize(currentSvgContent, {
-                    plugins: [
-                        // プリセットデフォルトをベースに、問題のあるプラグインを無効化
-                        {
-                            name: 'preset-default',
-                            params: {
-                                overrides: {
-                                    // viewBoxを削除しない（重要）
-                                    removeViewBox: false,
-                                    // 形状をpathに変換しない（座標ずれを防ぐ）
-                                    convertShapeToPath: false,
-                                    // パスデータを変換しない
-                                    convertPathData: false,
-                                    // IDを削除しない（参照がある可能性）
-                                    cleanupIDs: false
-                                }
+                // 単色アイコンモードとカラーアイコンモードで最適化設定を分ける
+                // 単色アイコン: 積極的に不要な色属性・スタイルも除去してさらにminify
+                // カラーアイコン: 色情報を維持したまま最小限のminify
+                const svgoPlugins = [
+                    {
+                        name: 'preset-default',
+                        params: {
+                            overrides: {
+                                // viewBoxを削除しない（重要）
+                                removeViewBox: false,
+                                // 形状をpathに変換しない（座標ずれを防ぐ）
+                                convertShapeToPath: false,
+                                // パスデータを変換しない（表示が変わる可能性）
+                                convertPathData: false,
+                                // IDを削除しない（参照がある可能性）
+                                cleanupIDs: false,
+                                // インラインスタイルをバラさない（色情報の保持）
+                                inlineStyles: false,
+                                // スタイルをマージしない（色情報を保持）
+                                mergeStyles: false,
+                                // 色の正規化はカラーアイコンでも問題なし
+                                convertColors: false
                             }
-                        },
-                        // 不要な属性を削除
-                        {
-                            name: 'removeAttrs',
-                            params: {
-                                attrs: [
-                                    'class',
-                                    'version',
-                                    'xml:space',
-                                    'data-name'
-                                ]
-                            }
-                        },
-                        // コメントを削除
-                        'removeComments',
-                        // エディタデータを削除
-                        'removeEditorsNSData',
-                        // メタデータを削除
-                        'removeMetadata',
-                        // タイトルと説明を削除
-                        'removeTitle',
-                        'removeDesc'
-                    ]
-                });
+                        }
+                    },
+                    // 不要な属性を削除
+                    {
+                        name: 'removeAttrs',
+                        params: {
+                            attrs: [
+                                'version',
+                                'xml:space',
+                                'data-name'
+                            ]
+                        }
+                    },
+                    // コメントを削除
+                    'removeComments',
+                    // エディタデータを削除
+                    'removeEditorsNSData',
+                    // メタデータを削除
+                    'removeMetadata',
+                    // タイトルと説明を削除
+                    'removeTitle',
+                    'removeDesc'
+                ];
+
+                const result = optimize(currentSvgContent, { plugins: svgoPlugins });
 
                 // minify された SVG 文字列から再構築
                 const minParser = new DOMParser();
@@ -454,6 +558,74 @@
                 console.error("SVGO optimization failed:", e);
                 // 失敗した場合は元のSVGをそのまま使用
             }
+        }
+
+        // ---- 両モード共通: ルートSVG要素の不要属性を除去 ----
+        // xml:space: SVGの空白処理用。CSSでの利用では不要（SVGOでマッチしない場合の保険）
+        svg.removeAttribute('xml:space');
+        // x, y: ルートSVGに不要な位置指定
+        svg.removeAttribute('x');
+        svg.removeAttribute('y');
+        // id: Adobe IllustratorなどのAI生成ID（参照されていなければ不要）
+        // ただし、SVG内から参照されているIDは保持する
+        {
+            const rootId = svg.getAttribute('id');
+            if (rootId) {
+                // SVG内の他の要素から参照されているか確認（url(#id), href="#id" など）
+                const svgStr = svg.innerHTML;
+                const isReferenced = svgStr.includes(`#${rootId}`) || svgStr.includes(`url(#${rootId})`);
+                if (!isReferenced) {
+                    svg.removeAttribute('id');
+                }
+            }
+        }
+        // style属性のwidth/height/opacityデフォルト値を除去（固定サイズはCSSスケーリングを妨げる）
+        {
+            const styleAttr = svg.getAttribute('style');
+            if (styleAttr) {
+                let styleStr = styleAttr
+                    // width/heightを除去
+                    .replace(/\bwidth\s*:[^;]+;?/gi, '')
+                    .replace(/\bheight\s*:[^;]+;?/gi, '')
+                    // opacity:1（デフォルト値）を除去
+                    .replace(/\bopacity\s*:\s*1\s*;?/gi, '')
+                    .trim()
+                    .replace(/;+$/, ''); // 末尾のセミコロンを除去
+                if (styleStr) {
+                    svg.setAttribute('style', styleStr);
+                } else {
+                    svg.removeAttribute('style'); // 空になれば属性ごと削除
+                }
+            }
+        }
+        // -------------------------------------------------
+
+        // ※ここで編集するsvgはCSS生成用のローカルコピーであり、プレビューに表示されるSVGとは別
+        if (outputMode === 'mask') {
+            // <style>要素を削除（色定義はマスクに不要）
+            svg.querySelectorAll('style').forEach(el => el.remove());
+
+            svg.querySelectorAll('*').forEach(el => {
+                // class属性を削除（スタイル参照先が消えたため不要）
+                el.removeAttribute('class');
+
+                // fill属性: "none"以外を削除（noneは形状に影響するため維持）
+                const fill = el.getAttribute('fill');
+                if (fill && fill.toLowerCase() !== 'none') {
+                    el.removeAttribute('fill');
+                }
+
+                // stroke属性: "none"以外を削除
+                const stroke = el.getAttribute('stroke');
+                if (stroke && stroke.toLowerCase() !== 'none') {
+                    el.removeAttribute('stroke');
+                }
+            });
+
+            // 空になった<defs>を削除
+            svg.querySelectorAll('defs').forEach(el => {
+                if (el.children.length === 0) el.remove();
+            });
         }
 
         // SVG の width, height, viewBox を取得
@@ -504,18 +676,20 @@
 
         // Data URI用のエスケープ処理
         minifiedSvg = minifiedSvg
+            .replace(/%/g, "%25")     // %を最初にエスケープ（二重エンコード防止）
             .replace(/"/g, "'")       // ダブルクォートをシングルクォートに
-            .replace(/#/g, "%23");    // シャープをURLエンコード
+            .replace(/#/g, "%23")     // シャープをURLエンコード
+            .replace(/</g, "%3C")     // 山括弧（開）をURLエンコード
+            .replace(/>/g, "%3E");    // 山括弧（閉）をURLエンコード
 
         // 4. CSS変数の構築
         const safeVarName = currentFileName.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
         currentCssVarName = `--${safeVarName || 'icon'}`;
-        currentCssVarValue = `url("data:image/svg+xml;utf-8,${minifiedSvg}")`;
+        currentCssVarValue = `url("data:image/svg+xml;charset=utf-8,${minifiedSvg}")`;
 
         const finalCssVar = `${currentCssVarName}: ${currentCssVarValue};`;
 
-        // 5. 出力モードの取得とCSSプロパティの構築
-        const outputMode = document.querySelector('input[name="outputMode"]:checked').value;
+        // 5. CSSプロパティの構築
         const currentColor = colorPicker.value;
 
         let finalCssUsage;
@@ -550,30 +724,38 @@ inline-size: ${cssWidth};`;
         showToast('CSSの生成が完了しました');
     }
 
-    // オリジナルSVGプレビューの更新
+    // オリジナルSVGプレビューの更新（安全なDOM操作）
     function updateOriginalPreview(svgContent) {
         if (!svgContent) return;
 
-        originalPreview.innerHTML = svgContent;
+        // 既存のプレビュー内容をクリア
+        originalPreview.textContent = '';
 
-        const svgEl = originalPreview.querySelector('svg');
-        if (svgEl) {
-            // インラインstyle属性をクリアして、JSで制御
-            svgEl.removeAttribute('style');
+        // DOMParserで安全にSVGをパースし、importNodeでDOMに挿入
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svgContent, 'image/svg+xml');
+        const parsedSvg = doc.querySelector('svg');
 
-            const hasWidth = svgEl.hasAttribute('width');
-            const hasHeight = svgEl.hasAttribute('height');
+        if (!parsedSvg) return;
 
-            if (hasWidth && hasHeight) {
-                svgEl.style.maxWidth = '100%';
-                svgEl.style.maxHeight = '100%';
-            } else {
-                svgEl.style.width = '100%';
-                svgEl.style.height = '100%';
-                svgEl.style.maxWidth = '100%';
-                svgEl.style.maxHeight = '100%';
-                svgEl.style.objectFit = 'contain';
-            }
+        const svgEl = document.importNode(parsedSvg, true);
+        originalPreview.appendChild(svgEl);
+
+        // インラインstyle属性をクリアして、JSで制御
+        svgEl.removeAttribute('style');
+
+        const hasWidth = svgEl.hasAttribute('width');
+        const hasHeight = svgEl.hasAttribute('height');
+
+        if (hasWidth && hasHeight) {
+            svgEl.style.maxWidth = '100%';
+            svgEl.style.maxHeight = '100%';
+        } else {
+            svgEl.style.width = '100%';
+            svgEl.style.height = '100%';
+            svgEl.style.maxWidth = '100%';
+            svgEl.style.maxHeight = '100%';
+            svgEl.style.objectFit = 'contain';
         }
     }
 
@@ -647,7 +829,7 @@ inline-size: ${cssWidth};`;
         if (!val) return;
 
         // 正規表現で変数名とURL部分を抽出 (--name: url(...);)
-        const match = val.match(/^(--[a-zA-Z0-9-]+)\s*:\s*(url\("data:image\/svg\+xml;.*?"\))\s*;?$/);
+        const match = val.match(/^(--[a-zA-Z0-9-]+)\s*:\s*(url\("data:image\/svg\+xml;[^"]*"\))\s*;?$/);
 
         if (match) {
             const oldVarName = currentCssVarName;
@@ -669,5 +851,12 @@ inline-size: ${cssWidth};`;
     cssUsageOutput.addEventListener('input', () => {
         if (!currentCssVarName || !currentCssVarValue) return;
         updateMaskPreview();
+    });
+
+    // コピーボタンのイベントリスナー登録（インラインonclick属性の代替）
+    document.querySelectorAll('[data-copy-target]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            copyText(this.dataset.copyTarget, this);
+        });
     });
 })(); // IIFE終了
