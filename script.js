@@ -204,10 +204,12 @@
             let css = styleEl.textContent || '';
             // @import による外部CSS読み込みを除去
             css = css.replace(/@import\s+[^;]+;?/gi, '');
-            // @font-face による外部フォント読み込みを除去
-            css = css.replace(/@font-face\s*\{[^}]*\}/gi, '');
+            // @font-face による外部フォント読み込みを除去（ネストした{}にも対応）
+            css = css.replace(/@font-face\s*\{[^}]*(?:\{[^}]*\}[^}]*)*\}/gi, '');
             // url() による外部リソース参照を除去
             css = css.replace(/url\s*\([^)]*\)/gi, '');
+            // expression() による古い攻撃ベクターを除去（IEレガシー）
+            css = css.replace(/expression\s*\([^)]*\)/gi, '');
             styleEl.textContent = css;
         });
 
@@ -241,9 +243,11 @@
                         }
                     }
 
-                    // 4. style属性内のurl()を削除（外部リソース読み込み防止）
+                    // 4. style属性内のurl()とexpression()を削除（外部リソース読み込み・レガシー攻撃防止）
                     if (attrName === 'style') {
-                        const cleanedStyle = attrValue.replace(/url\s*\([^)]*\)/gi, '');
+                        const cleanedStyle = attrValue
+                            .replace(/url\s*\([^)]*\)/gi, '')
+                            .replace(/expression\s*\([^)]*\)/gi, '');
                         if (cleanedStyle !== attrValue) {
                             node.setAttribute(attr.name, cleanedStyle);
                         }
@@ -683,8 +687,12 @@
             .replace(/>/g, "%3E");    // 山括弧（閉）をURLエンコード
 
         // 4. CSS変数の構築
-        const safeVarName = currentFileName.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
-        currentCssVarName = `--${safeVarName || 'icon'}`;
+        const safeVarName = currentFileName
+            .replace(/[^a-zA-Z0-9-]/g, '-') // 英数字・ハイフン以外を置換
+            .replace(/-{2,}/g, '-')          // 連続ハイフンを1つに（M-2対策）
+            .replace(/^-+|-+$/g, '')         // 先頭末尾のハイフンを除去
+            .toLowerCase() || 'icon';
+        currentCssVarName = `--${safeVarName}`;
         currentCssVarValue = `url("data:image/svg+xml;charset=utf-8,${minifiedSvg}")`;
 
         const finalCssVar = `${currentCssVarName}: ${currentCssVarValue};`;
@@ -736,7 +744,8 @@ inline-size: ${cssWidth};`;
         const doc = parser.parseFromString(svgContent, 'image/svg+xml');
         const parsedSvg = doc.querySelector('svg');
 
-        if (!parsedSvg) return;
+        // SVGSVGElement であることを明示的に確認（処理命令ノード等の混入防止）
+        if (!parsedSvg || !(parsedSvg instanceof SVGSVGElement)) return;
 
         const svgEl = document.importNode(parsedSvg, true);
         originalPreview.appendChild(svgEl);
@@ -759,11 +768,34 @@ inline-size: ${cssWidth};`;
         }
     }
 
+    // CSSをホワイトリストで安全に適用する関数（H-3対策: cssText直接代入を回避）
+    const ALLOWED_CSS_PROPS = new Set([
+        'display', 'mask-image', 'mask-size', 'mask-position', 'mask-repeat',
+        'mask', '-webkit-mask-image', '-webkit-mask-size', '-webkit-mask-position', '-webkit-mask-repeat',
+        'background-image', 'background-size', 'background-position', 'background-repeat',
+        'background-color', 'block-size', 'inline-size', 'width', 'height',
+        'max-width', 'max-height'
+    ]);
+
+    function safeApplyCss(element, cssText) {
+        // 既存スタイルをリセット
+        element.removeAttribute('style');
+        // 一時要素でCSSをパース
+        const tmpEl = document.createElement('div');
+        tmpEl.setAttribute('style', cssText);
+        for (const prop of tmpEl.style) {
+            if (ALLOWED_CSS_PROPS.has(prop)) {
+                element.style.setProperty(prop, tmpEl.style.getPropertyValue(prop));
+            }
+        }
+    }
+
     // プレビューの更新（mask-image / background-image 共用）
     function updatePreview(width = null, height = null, outputMode = 'mask') {
         if (!currentCssVarName) return;
 
-        maskPreview.style.cssText = cssUsageOutput.value;
+        // ホワイトリストを通じて安全にCSSを適用（cssText直接代入を回避）
+        safeApplyCss(maskPreview, cssUsageOutput.value);
         // var(--xxx) の実体セット
         maskPreview.style.setProperty(currentCssVarName, currentCssVarValue);
 
