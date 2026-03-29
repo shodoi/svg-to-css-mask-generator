@@ -9,6 +9,11 @@
     <!-- NOTE: 'unsafe-eval' は Tailwind CDN の動的スタイル生成に必要。
          本番環境では Tailwind をローカルビルドし 'unsafe-eval' を削除することを推奨。 -->
     <title>SVG to CSS Mask Generator</title>
+    <meta property="og:title" content="SVG to CSS Mask Generator">
+    <meta property="og:description" content="SVGからCSSの CSS Mask (mask-image) を簡単に生成・プレビューできるツールです。">
+    <meta property="og:site_name" content="SVG to CSS Mask Generator">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
     <!-- NOTE: Tailwind CDN はバージョン未固定・SRI非対応（動的生成のため）。本番環境ではローカルビルドを推奨 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -103,7 +108,7 @@
                         <span id="fileNameDisplay" class="text-xs text-gray-400"></span>
                     </div>
                     <div
-                        class="checkerboard rounded-lg border border-gray-200 flex-1 min-h-[120px] flex items-center justify-center overflow-hidden p-2">
+                        class="checkerboard rounded-lg border border-gray-200 h-64 flex items-center justify-center overflow-hidden p-2">
                         <div id="originalPreview" class="w-full h-full flex items-center justify-center">
                             <span class="text-gray-400 text-xs">未選択</span>
                         </div>
@@ -228,7 +233,7 @@
                             title="プレビューの色を変更" aria-label="マスクプレビューの背景色">
                     </div>
                 </div>
-                <div class="checkerboard rounded-lg border border-gray-200 h-56 flex items-center justify-center p-3">
+                <div class="checkerboard rounded-lg border border-gray-200 h-64 flex items-center justify-center p-3">
                     <div id="maskPreview" class="transition-colors duration-200"></div>
                 </div>
                 <p class="text-center text-xs text-gray-400 mt-2 italic">

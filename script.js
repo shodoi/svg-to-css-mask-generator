@@ -710,6 +710,8 @@ mask-position: center;
 mask-repeat: no-repeat;
 block-size: ${cssHeight};
 inline-size: ${cssWidth};
+max-block-size: 100%;
+max-inline-size: 100%;
 background-color: ${currentColor};`;
         } else {
             // background-image モード（カラーアイコン）
@@ -719,7 +721,9 @@ background-size: contain;
 background-position: center;
 background-repeat: no-repeat;
 block-size: ${cssHeight};
-inline-size: ${cssWidth};`;
+inline-size: ${cssWidth};
+max-block-size: 100%;
+max-inline-size: 100%;`;
         }
 
         // 出力
@@ -774,7 +778,7 @@ inline-size: ${cssWidth};`;
         'mask', '-webkit-mask-image', '-webkit-mask-size', '-webkit-mask-position', '-webkit-mask-repeat',
         'background-image', 'background-size', 'background-position', 'background-repeat',
         'background-color', 'block-size', 'inline-size', 'width', 'height',
-        'max-width', 'max-height'
+        'max-width', 'max-height', 'max-block-size', 'max-inline-size'
     ]);
 
     function safeApplyCss(element, cssText) {
